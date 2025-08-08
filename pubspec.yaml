@@ -11,8 +11,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  webview_flutter: ^4.13.0
-  http: ^1.0.0
+  flutter_inappwebview: ^6.1.5
+  http: ^1.5.0
   fpdart: ^1.1.1
 
 dev_dependencies:
