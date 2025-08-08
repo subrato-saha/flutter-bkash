@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bkash/src/bkash_payment_status.dart';
-import 'package:webview_flutter/webview_flutter.dart';
-
-typedef PaymentStatus = void Function(BkashPaymentStatus bkashPaymentStatus);
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 class FlutterBkashView extends StatefulWidget {
   final String bkashURL;
@@ -19,52 +17,15 @@ class FlutterBkashView extends StatefulWidget {
   });
 
   @override
-  FlutterBkashViewState createState() => FlutterBkashViewState();
+  State<FlutterBkashView> createState() => _FlutterBkashViewState();
 }
 
-class FlutterBkashViewState extends State<FlutterBkashView> {
-  late WebViewController _webViewController;
+class _FlutterBkashViewState extends State<FlutterBkashView> {
+  InAppWebViewController? webViewController;
 
   @override
   void initState() {
     super.initState();
-
-    _webViewController = WebViewController()
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(const Color(0x00000000))
-      ..setNavigationDelegate(
-        NavigationDelegate(
-          // onProgress: (int progress) {
-          //   log(progress.toString());
-          // },
-          // onPageStarted: (String url) {},
-          // onPageFinished: (String url) {},
-          onWebResourceError: (WebResourceError error) => Navigator.of(context).pop(BkashPaymentStatus.failed),
-          onNavigationRequest: (NavigationRequest request) {
-            if (request.url.contains("bkash.com")) {
-              //sendbox starts with sandbox.payment.bkash.com and live starts with payment.bkash.com
-              return NavigationDecision.navigate;
-            }
-            if (request.url.startsWith(widget.successCallbackURL)) {
-              Navigator.of(context).pop(BkashPaymentStatus.successed);
-            } else if (request.url.startsWith(widget.failureCallbackURL)) {
-              Navigator.of(context).pop(BkashPaymentStatus.failed);
-            } else if (request.url.startsWith(widget.cancelledCallbackURL)) {
-              Navigator.of(context).pop(BkashPaymentStatus.canceled);
-            }
-            return NavigationDecision.prevent;
-          },
-        ),
-      )
-      ..loadRequest(Uri.parse(widget.bkashURL));
-  }
-
-  @override
-  void dispose() {
-    _webViewController.clearCache();
-    _webViewController.clearLocalStorage();
-
-    super.dispose();
   }
 
   @override
@@ -73,8 +34,9 @@ class FlutterBkashViewState extends State<FlutterBkashView> {
       canPop: false,
       onPopInvokedWithResult: (didPop, result) async {
         if (!didPop) {
-          if (await _webViewController.canGoBack()) {
-            await _webViewController.goBack();
+          if (webViewController != null &&
+              await webViewController!.canGoBack()) {
+            await webViewController!.goBack();
           } else {
             if (context.mounted) {
               Navigator.of(context).pop(BkashPaymentStatus.canceled);
@@ -85,21 +47,54 @@ class FlutterBkashViewState extends State<FlutterBkashView> {
       child: Scaffold(
         backgroundColor: Colors.white,
         appBar: AppBar(
-            elevation: 0.0,
-            backgroundColor: Colors.pink,
-            automaticallyImplyLeading: true,
-            leading: IconButton(
-              icon: const Icon(Icons.arrow_back),
-              color: Colors.white,
-              onPressed: () => Navigator.of(context).pop(BkashPaymentStatus.canceled),
-            ),
-            title: const Text('bKash Checkout')),
-        body: WebViewWidget(controller: _webViewController),
+          elevation: 0.0,
+          backgroundColor: Colors.pink,
+          automaticallyImplyLeading: true,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            color: Colors.white,
+            onPressed: () =>
+                Navigator.of(context).pop(BkashPaymentStatus.canceled),
+          ),
+          title: const Text('bKash Checkout'),
+        ),
+        body: InAppWebView(
+          initialUrlRequest: URLRequest(url: WebUri(widget.bkashURL)),
+          initialSettings: InAppWebViewSettings(
+            javaScriptEnabled: true,
+            clearCache: true,
+            useOnLoadResource: true,
+            useShouldOverrideUrlLoading: true,
+            supportZoom: false,
+            transparentBackground: false,
+          ),
+          onWebViewCreated: (controller) {
+            webViewController = controller;
+          },
+          shouldOverrideUrlLoading: (controller, navigationAction) async {
+            final url = navigationAction.request.url.toString();
+
+            if (url.startsWith(widget.successCallbackURL)) {
+              Navigator.of(context).pop(BkashPaymentStatus.successed);
+              return NavigationActionPolicy.CANCEL;
+            } else if (url.startsWith(widget.failureCallbackURL)) {
+              Navigator.of(context).pop(BkashPaymentStatus.failed);
+              return NavigationActionPolicy.CANCEL;
+            } else if (url.startsWith(widget.cancelledCallbackURL)) {
+              Navigator.of(context).pop(BkashPaymentStatus.canceled);
+              return NavigationActionPolicy.CANCEL;
+            }
+
+            return NavigationActionPolicy.ALLOW;
+          },
+          onLoadError: (controller, url, code, message) {
+            Navigator.of(context).pop(BkashPaymentStatus.failed);
+          },
+          onLoadHttpError: (controller, url, statusCode, description) {
+            Navigator.of(context).pop(BkashPaymentStatus.failed);
+          },
+        ),
       ),
     );
   }
-
-  void showSnackBar(String message) => ScaffoldMessenger.of(context)
-    ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(content: Text(message)));
 }
